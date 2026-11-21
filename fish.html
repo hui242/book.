@@ -130,12 +130,12 @@ canvas{display:block;width:100vw;height:100dvh}
   function kickFor(index,t){const a=actionFor(index,t);return a&&a.type==='kick'?a:null;}
   function throwFor(index,t){const a=actionFor(index,t);return a&&a.type==='throw'?a:null;}
   function avatarPose(index,t){
-    const baseX=index===0?88:362,baseY=548;
+    const baseX=index===0?88:362,baseY=510;
     const events=cardActions[index],active=actionFor(index,t);
     let completed=0;for(const e of events){if(t>e.at+e.duration)completed++;}
     let x=completed%2===0?baseX:(index===0?392:58);
     if(active){
-      const p=active.p,u=ease(p),arc=active.type==='throw'?224:154;
+      const p=active.p,u=ease(p),arc=active.type==='throw'?224:100;
       x=active.fromX+(active.dest-active.fromX)*u;
       const y=baseY-Math.sin(p*Math.PI)*arc+Math.sin(p*Math.PI*2)*(active.type==='throw'?13:6);
       const spin=active.type==='throw'?Math.PI*6:Math.PI*4;
@@ -194,7 +194,7 @@ canvas{display:block;width:100vw;height:100dvh}
 
     // A short, clearly attached stocking-and-boot kick follows the actual leg direction.
     if(kicking&&kickPhase>.08&&kickPhase<.62){
-      const side=kick.side,reach=kickPhase<.34?ease((kickPhase-.08)/.26):1-ease((kickPhase-.34)/.28);
+      const side=kick.side,reach=kickPhase<.42?ease(kickPhase/.30):1-ease((kickPhase-.42)/.22);
       const sx=side<0?451:573,sy=810,tx=side<0?160:864,ty=970;
       const ex=sx+(tx-sx)*reach,ey=sy+(ty-sy)*reach;
       ctx.lineCap='round';ctx.strokeStyle='#26386d';ctx.lineWidth=60;ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();
@@ -321,6 +321,7 @@ canvas{display:block;width:100vw;height:100dvh}
 </script>
 </body>
 </html>
+
 
 
 
