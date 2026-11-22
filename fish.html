@@ -40,13 +40,13 @@ canvas{display:block;width:100vw;height:100dvh}
     {at:17.05,until:21.55,text:'接着来回抛两下！'},
     {at:23.55,until:27.45,text:'好啦，不逗你啦，和好吧！'}
   ];
-  let lastSpokenIndex=-1;
+  let lastSpokenIndex=-1,pendingSpeechText=null,voiceAttempted=false,voiceStarted=false,speechWatchdog=null;
   const startTime=performance.now();
   let musicAudio=null,musicStopTimer=null,musicStarted=false;
   function startMusic(){
     if(!musicAudio){
       musicAudio=new Audio('music.mp3');
-      musicAudio.loop=true;musicAudio.volume=.13;musicAudio.preload='auto';
+      musicAudio.loop=true;musicAudio.volume=.12;musicAudio.preload='auto';
     }
     if(!musicStarted){
       try{
@@ -63,19 +63,47 @@ canvas{display:block;width:100vw;height:100dvh}
     }
   }
   function enableSound(){startMusic();}
-  function sayLine(text){
-    if(!window.speechSynthesis||!window.SpeechSynthesisUtterance||voiceAttempted)return;
-    const utter=new SpeechSynthesisUtterance(text);
-    utter.lang='zh-CN';utter.rate=1.12;utter.pitch=1.32;utter.volume=1;
-    const voices=window.speechSynthesis.getVoices();
+  function speakLine(text,fromGesture){
+    const synth=window.speechSynthesis;
+    if(!synth||!window.SpeechSynthesisUtterance||!text)return false;
+    if(voiceAttempted&&!fromGesture)return false;
+    const voices=synth.getVoices();
     const zhVoices=voices.filter(v=>/^zh(-|_)/i.test(v.lang));
     const preferred=zhVoices.find(v=>/(female|xiaoxiao|huihui|xuanxuan|yaoyao|yating|tingting|小雨|晓晓|惠惠|女声)/i.test(v.name));
     const zh=preferred||zhVoices.find(v=>/^zh-CN/i.test(v.lang))||zhVoices[0];
+    const utter=new SpeechSynthesisUtterance(text);
+    utter.lang='zh-CN';utter.rate=1.1;utter.pitch=1.28;utter.volume=1;
     if(zh)utter.voice=zh;
-    utter.onend=()=>{voiceFinished=true;voiceAttempted=false;};
-    utter.onerror=()=>{voiceAttempted=false;};
-    voiceAttempted=true;
-    try{window.speechSynthesis.speak(utter);}catch(e){voiceAttempted=false;}
+    voiceAttempted=true;voiceStarted=false;
+    if(voices.length===0)pendingSpeechText=text;
+    else pendingSpeechText=null;
+    if(speechWatchdog)clearTimeout(speechWatchdog);
+    utter.onstart=()=>{
+      voiceStarted=true;pendingSpeechText=null;
+      if(speechWatchdog){clearTimeout(speechWatchdog);speechWatchdog=null;}
+      if(musicAudio)musicAudio.volume=.045;
+    };
+    utter.onend=()=>{
+      voiceAttempted=false;voiceStarted=false;
+      if(musicAudio)musicAudio.volume=.12;
+    };
+    utter.onerror=()=>{
+      voiceAttempted=false;voiceStarted=false;pendingSpeechText=text;
+      if(musicAudio)musicAudio.volume=.12;
+    };
+    try{synth.resume();synth.speak(utter);}catch(e){voiceAttempted=false;pendingSpeechText=text;}
+    speechWatchdog=setTimeout(()=>{
+      if(!voiceStarted&&!synth.speaking){voiceAttempted=false;pendingSpeechText=text;}
+    },2200);
+    return true;
+  }
+  function sayLine(text){speakLine(text,false);}
+  if(window.speechSynthesis){
+    window.speechSynthesis.onvoiceschanged=()=>{
+      if(pendingSpeechText&&!window.speechSynthesis.speaking){
+        const text=pendingSpeechText;pendingSpeechText=null;voiceAttempted=false;speakLine(text,false);
+      }
+    };
   }
   function handleSpeech(t){
     const index=dialogue.findIndex(line=>t>=line.at&&t<line.until);
@@ -84,7 +112,8 @@ canvas{display:block;width:100vw;height:100dvh}
   window.addEventListener('pointerdown',()=>{
     enableSound();
     const line=dialogue.find(x=>elapsed>=x.at&&elapsed<x.until)||dialogue[0];
-    if(window.speechSynthesis&&!window.speechSynthesis.speaking){voiceAttempted=false;sayLine(line.text);}
+    const synth=window.speechSynthesis;
+    if(synth&&!synth.speaking){voiceAttempted=false;pendingSpeechText=null;speakLine(line.text,true);}
   },{once:true,passive:true});
   setTimeout(()=>{enableSound();},120);
   function roundRect(c,x,y,w,h,r){
@@ -93,8 +122,8 @@ canvas{display:block;width:100vw;height:100dvh}
   }
   function ease(v){return v<.5?4*v*v*v:1-Math.pow(-2*v+2,3)/2;}
   const cardActions=[
-    [{at:3.35,type:'kick',duration:1.8},{at:9.0,type:'throw',duration:2.2},{at:16.25,type:'kick',duration:1.8},{at:22.6,type:'throw',duration:2.2}],
-    [{at:6.0,type:'throw',duration:2.2},{at:12.0,type:'kick',duration:1.8},{at:19.2,type:'throw',duration:2.2},{at:26.0,type:'kick',duration:1.8}]
+    [{at:3.35,type:'kick',duration:1.8},{at:9.0,type:'throw',duration:2.5},{at:16.25,type:'kick',duration:1.8},{at:22.6,type:'throw',duration:2.5}],
+    [{at:6.0,type:'throw',duration:2.5},{at:12.0,type:'kick',duration:1.8},{at:19.2,type:'throw',duration:2.5},{at:26.0,type:'kick',duration:1.8}]
   ];
   function actionFor(index,t){
     const events=cardActions[index];
@@ -104,7 +133,8 @@ canvas{display:block;width:100vw;height:100dvh}
         const forward=i%2===0;
         const fromX=index===0?(forward?115:335):(forward?335:115);
         const dest=index===0?(forward?335:115):(forward?115:335);
-        return{p:(t-e.at)/e.duration,side:fromX<225?-1:1,direction:dest>fromX?1:-1,index,type:e.type,fromX,dest,duration:e.duration};
+        const fromY=fromX<225?420:290,destY=dest<225?420:290;
+        return{p:(t-e.at)/e.duration,side:fromX<225?-1:1,direction:dest>fromX?1:-1,index,type:e.type,fromX,dest,fromY,destY,duration:e.duration};
       }
     }
     return null;
@@ -112,29 +142,32 @@ canvas{display:block;width:100vw;height:100dvh}
   function kickFor(index,t){const a=actionFor(index,t);return a&&a.type==='kick'?a:null;}
   function throwFor(index,t){const a=actionFor(index,t);return a&&a.type==='throw'?a:null;}
   function avatarPose(index,t){
-    const baseX=index===0?115:335,baseY=490;
+    const baseX=index===0?115:335;
     const events=cardActions[index],active=actionFor(index,t);
     let completed=0;for(const e of events){if(t>e.at+e.duration)completed++;}
     const settledX=completed%2===0?baseX:(index===0?335:115);
+    const settledY=settledX<225?420:290;
     if(active){
-      const p=active.p;
+      const p=active.p,fromY=active.fromY,destY=active.destY;
       if(active.type==='throw'){
         if(p<.22){
           const lift=ease(p/.22);
-          return{x:active.fromX,y:490-80*lift,r:active.direction*.12*lift,s:1+.04*lift,moving:true,held:p>=.14,kind:'pickup',index};
+          return{x:active.fromX,y:fromY-42*lift,r:active.direction*.12*lift,s:1+.04*lift,moving:true,held:p>=.12,kind:'pickup',index};
         }
-        if(p<.32)return{x:active.fromX,y:410,r:active.direction*.12,s:1.04,moving:true,held:true,kind:'held',index};
-        const q=(p-.32)/.68,u=ease(q);
+        if(p<.32)return{x:active.fromX,y:fromY-42,r:active.direction*.12,s:1.04,moving:true,held:true,kind:'held',index};
+        const q=(p-.32)/.68,u=ease(q),launchY=fromY-42;
         return{x:active.fromX+(active.dest-active.fromX)*u,
-          y:410+80*u-Math.sin(q*Math.PI)*180,
+          y:launchY+(destY-launchY)*u-Math.sin(q*Math.PI)*132,
           r:active.direction*Math.PI*6*q,s:1+.08*Math.sin(q*Math.PI),moving:true,held:false,kind:'throw',index};
       }
       const u=ease(p);
-      return{x:active.fromX+(active.dest-active.fromX)*u,y:490-Math.sin(p*Math.PI)*105,
+      return{x:active.fromX+(active.dest-active.fromX)*u,
+        y:fromY+(destY-fromY)*u-Math.sin(p*Math.PI)*105,
         r:active.direction*Math.PI*4*p,s:1+.08*Math.sin(p*Math.PI),moving:true,held:false,kind:'kick',index};
     }
-    return{x:settledX,y:490,r:0,s:1,moving:false,held:false,kind:'',index};
-  }  function drawAvatar(img,x,y,r,rot,scaleFactor,tint){
+    return{x:settledX,y:settledY,r:0,s:1,moving:false,held:false,kind:'',index};
+  }
+    function drawAvatar(img,x,y,r,rot,scaleFactor,tint){
     ctx.save();ctx.translate(x,y);ctx.rotate(rot);ctx.scale(scaleFactor,scaleFactor);
     ctx.shadowColor='rgba(45,54,80,.22)';ctx.shadowBlur=18;ctx.shadowOffsetY=8;
     ctx.beginPath();ctx.arc(0,0,r+8,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
@@ -162,16 +195,44 @@ canvas{display:block;width:100vw;height:100dvh}
     ctx.font='bold '+fontSize+'px "Microsoft YaHei",system-ui,sans-serif';ctx.fillText(line.text,225,117);
     ctx.restore();
   }  function drawGrip(action,pose){
-    if(!action||action.type!=='throw'||action.p<.14||action.p>.32||!pose)return;
-    const left=action.fromX<225;
-    const wristX=left?158:287,wristY=406;
-    const handX=pose.x+(left?56:-56),handY=pose.y;
-    ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
-    ctx.strokeStyle='#1d2c5b';ctx.lineWidth=10;ctx.beginPath();ctx.moveTo(wristX,wristY);
-    ctx.quadraticCurveTo((wristX+handX)/2,handY-5,handX,handY);ctx.stroke();
-    ctx.strokeStyle='#fff0ef';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(handX-(left?5:-5),handY-5);ctx.lineTo(handX,handY);ctx.stroke();
-    ctx.fillStyle='#ffd9cd';ctx.beginPath();ctx.ellipse(handX,handY,8,7,0,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle='#db9a92';ctx.lineWidth=1.7;ctx.beginPath();ctx.moveTo(handX+(left?1:-1),handY-4);ctx.lineTo(handX+(left?5:-5),handY-1);ctx.stroke();ctx.restore();
+    if(!action||action.type!=='throw'||!pose)return;
+    const p=action.p;
+    function drawContact(sideX,reach,closed){
+      if(reach<=.02)return;
+      const isLeft=sideX<225,anchorX=isLeft?72:392,anchorY=isLeft?405:218;
+      const targetX=pose.x+(isLeft?-51:51),targetY=pose.y;
+      const handX=anchorX+(targetX-anchorX)*reach,handY=anchorY+(targetY-anchorY)*reach;
+      const bendX=(anchorX+handX)/2+(isLeft?10:-10),bendY=(anchorY+handY)/2+8;
+      ctx.save();ctx.globalAlpha=Math.min(.98,reach*1.25);ctx.lineCap='round';ctx.lineJoin='round';
+      ctx.strokeStyle='rgba(23,39,82,.95)';ctx.lineWidth=23;
+      ctx.beginPath();ctx.moveTo(anchorX,anchorY);ctx.quadraticCurveTo(bendX,bendY,handX,handY);ctx.stroke();
+      ctx.strokeStyle='#385596';ctx.lineWidth=15;
+      ctx.beginPath();ctx.moveTo(anchorX,anchorY);ctx.quadraticCurveTo(bendX,bendY,handX,handY);ctx.stroke();
+      ctx.strokeStyle='#fff2ed';ctx.lineWidth=4;
+      ctx.beginPath();ctx.moveTo(handX-(isLeft?6:-6),handY-9);ctx.lineTo(handX+(isLeft?4:-4),handY+9);ctx.stroke();
+      ctx.translate(handX,handY);ctx.rotate(isLeft?0:Math.PI);
+      ctx.fillStyle='#ffd9cd';ctx.strokeStyle='#ba7b74';ctx.lineWidth=2;
+      ctx.beginPath();ctx.ellipse(0,0,15,11,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.strokeStyle='#ffd9cd';ctx.lineCap='round';ctx.lineWidth=5;
+      if(closed){
+        for(let i=0;i<3;i++){
+          const fy=-6+i*6;
+          ctx.beginPath();ctx.moveTo(7,fy);ctx.quadraticCurveTo(14,fy-1,14,fy+4);ctx.stroke();
+        }
+        ctx.beginPath();ctx.moveTo(-2,5);ctx.quadraticCurveTo(5,9,9,4);ctx.stroke();
+      }else{
+        for(let i=0;i<3;i++){
+          const fy=-7+i*7;
+          ctx.beginPath();ctx.moveTo(6,fy);ctx.quadraticCurveTo(13,fy-4,17,fy-7);ctx.stroke();
+        }
+        ctx.beginPath();ctx.moveTo(-5,3);ctx.quadraticCurveTo(0,9,5,8);ctx.stroke();
+      }
+      ctx.restore();
+    }
+    const take=p<.12?ease(p/.12):p<.32?1:p<.52?1-ease((p-.32)/.20):0;
+    const catchReach=p<.82?0:p<.98?ease((p-.82)/.16):1;
+    drawContact(action.fromX,take,p>=.14&&p<=.32);
+    drawContact(action.dest,catchReach,p>=.93);
   }  function drawScene(t){
     const bg=ctx.createLinearGradient(0,0,0,H);
     bg.addColorStop(0,'#bde5ee');bg.addColorStop(.54,'#dbf2e9');bg.addColorStop(1,'#a8d9de');
@@ -205,6 +266,11 @@ canvas{display:block;width:100vw;height:100dvh}
       const action=kick||toss, pose=action.index===0?p1:p2;
       ctx.fillStyle='rgba(255,255,255,.92)';ctx.font='bold 20px "Microsoft YaHei",system-ui,sans-serif';
       ctx.textAlign='center';ctx.fillText(toss?(toss.p<.32?'拿起！':'抛！'):'踢！',pose.x,pose.y-77);
+    }
+    if(toss&&toss.p>.82){
+      const pose=toss.index===0?p1:p2;
+      ctx.fillStyle='rgba(255,255,255,.92)';ctx.font='bold 20px "Microsoft YaHei",system-ui,sans-serif';
+      ctx.textAlign='center';ctx.fillText(toss.p>.94?'接住！':'要接住！',pose.x,pose.y-77);
     }
     if(t>=27.7){
       ctx.fillStyle='rgba(255,255,255,.88)';roundRect(ctx,73,682,304,49,22);ctx.fill();
