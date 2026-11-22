@@ -77,3 +77,8 @@ Copyright (c) 2026 YunYueSama
 配乐：Cartoons (Happy Children Music)，Alex_Kizenkov，Pixabay。
 来源：https://pixabay.com/music/cartoons-cartoons-happy-children-music-140090/
 按 Pixabay Content License 使用。配乐作为本网页视频的一部分内嵌，未单独发布音频文件。
+
+经典全身立绘：ZipZipPipe 的 DeepSeek 女仆鲸鱼娘二创，原型为上善无形「溟月」。
+来源：Iphsiibl/deepseek-whale-girl-gallery，文件 docs/moegirl/02-nvpu-whale-girl.png；页面使用该图集提供的 960w WebP 压缩预览。
+来源项目说明该角色形象整体采用 CC BY-NC-SA 4.0（署名、非商业、相同方式共享）：https://creativecommons.org/licenses/by-nc-sa/4.0/
+本页面为非官方非商业衍生展示；立绘保持原样，仅铺满画布比例显示。来源：https://github.com/Iphsiibl/deepseek-whale-girl-gallery
