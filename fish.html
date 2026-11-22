@@ -179,9 +179,66 @@ canvas{display:block;width:100vw;height:100dvh}
     ctx.beginPath();ctx.arc(0,0,r+3,0,Math.PI*2);ctx.lineWidth=3;ctx.strokeStyle='#fff7e8';ctx.stroke();
     ctx.restore();
   }
-  function drawFish(){
-    if(!fishArt.complete||!fishArt.naturalWidth)return;
-    ctx.drawImage(fishArt,0,0,W,H);
+  function fishMotion(t,kick,toss){
+    const breath=Math.sin(t*2.1),active=toss||kick;
+    const pose={x:1.4*breath,y:1.8*Math.sin(t*4),rot:.012*Math.sin(t*1.1),
+      sx:1+.003*breath,sy:1-.004*breath};
+    if(!active)return pose;
+    const p=active.p,dir=active.direction||1;
+    if(active.type==='throw'){
+      const reachSide=active.fromX<225?-1:1,catchSide=active.dest<225?-1:1;
+      if(p<.2){
+        const q=ease(p/.2);
+        pose.x=reachSide*(2+4*q);pose.y=3*q;pose.rot=reachSide*.045*q;pose.sy=1-.018*q;
+      }else if(p<.32){
+        const q=(p-.2)/.12;
+        pose.x=reachSide*6;pose.y=3;pose.rot=reachSide*.045;pose.sx=1+.012*q;pose.sy=.982;
+      }else if(p<.62){
+        const q=ease((p-.32)/.30);
+        pose.x=reachSide*6+(dir*14-reachSide*6)*q;pose.y=3-9*q;
+        pose.rot=reachSide*.045*(1-q)+dir*.085*q;pose.sx=1+.015*Math.sin(q*Math.PI);pose.sy=.965;
+      }else if(p<.82){
+        const q=(p-.62)/.20;
+        pose.x=dir*14*(1-.35*q);pose.y=-6+4*q;pose.rot=dir*.085*(1-.35*q);
+        pose.sy=.965+.025*q;
+      }else{
+        const q=ease((p-.82)/.18);
+        pose.x=dir*9.1+(catchSide*8-dir*9.1)*q;pose.y=-2-3*q;
+        pose.rot=dir*.05525+(catchSide*.05-dir*.05525)*q;pose.sx=1+.01*q;pose.sy=.99;
+      }
+    }else{
+      if(p<.2){
+        const q=ease(p/.2);
+        pose.x=-dir*5*q;pose.y=4*q;pose.rot=-dir*.055*q;pose.sy=1-.025*q;
+      }else if(p<.34){
+        const q=(p-.2)/.14;
+        pose.x=-dir*5;pose.y=4;pose.rot=-dir*.055;pose.sy=.975;pose.sx=1+.01*q;
+      }else if(p<.68){
+        const q=ease((p-.34)/.34);
+        pose.x=-dir*5+(dir*19)*q;pose.y=4-9*q;
+        pose.rot=-dir*.055+dir*.145*q;pose.sx=1+.02*q;pose.sy=.975;
+      }else if(p<.84){
+        const q=(p-.68)/.16;
+        pose.x=dir*14*(1-.45*q);pose.y=-5+5*q;pose.rot=dir*.09*(1-.4*q);pose.sy=.975+.015*q;
+      }else{
+        const q=ease((p-.84)/.16);
+        pose.x=dir*7.7-dir*9.7*q;pose.y=2*q;pose.rot=dir*.054-dir*.074*q;
+      }
+    }
+    return pose;
+  }
+  function fishTransformPoint(x,y,pose){
+    const dx=x-W/2,dy=y-H/2,c=Math.cos(pose.rot),s=Math.sin(pose.rot);
+    return{x:W/2+pose.x+dx*pose.sx*c-dy*pose.sy*s,
+      y:H/2+pose.y+dx*pose.sx*s+dy*pose.sy*c};
+  }
+  function drawFish(t,kick,toss){
+    if(!fishArt.complete||!fishArt.naturalWidth)return null;
+    const pose=fishMotion(t,kick,toss);
+    ctx.save();ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+    ctx.translate(W/2+pose.x,H/2+pose.y);ctx.rotate(pose.rot);ctx.scale(pose.sx,pose.sy);
+    ctx.drawImage(fishArt,-W/2,-H/2,W,H);ctx.restore();
+    return pose;
   }
   function drawBubble(t){
     const line=dialogue.find(v=>t>=v.at&&t<v.until);if(!line)return;
@@ -194,12 +251,14 @@ canvas{display:block;width:100vw;height:100dvh}
     const fontSize=line.text.length>17?19:line.text.length>13?21:24;
     ctx.font='bold '+fontSize+'px "Microsoft YaHei",system-ui,sans-serif';ctx.fillText(line.text,225,117);
     ctx.restore();
-  }  function drawGrip(action,pose){
+  }  function drawGrip(action,pose,fishPose){
     if(!action||action.type!=='throw'||!pose)return;
     const p=action.p;
     function drawContact(sideX,reach,closed){
       if(reach<=.02)return;
-      const isLeft=sideX<225,anchorX=isLeft?72:392,anchorY=isLeft?405:218;
+      const isLeft=sideX<225,rawAnchorX=isLeft?72:392,rawAnchorY=isLeft?405:218;
+      const anchor=fishPose?fishTransformPoint(rawAnchorX,rawAnchorY,fishPose):{x:rawAnchorX,y:rawAnchorY};
+      const anchorX=anchor.x,anchorY=anchor.y;
       const targetX=pose.x+(isLeft?-51:51),targetY=pose.y;
       const handX=anchorX+(targetX-anchorX)*reach,handY=anchorY+(targetY-anchorY)*reach;
       const bendX=(anchorX+handX)/2+(isLeft?10:-10),bendY=(anchorY+handY)/2+8;
@@ -252,10 +311,10 @@ canvas{display:block;width:100vw;height:100dvh}
     }
     const p1=avatarPose(0,t),p2=avatarPose(1,t);
     const kick=kickFor(0,t)||kickFor(1,t), toss=throwFor(0,t)||throwFor(1,t);
-    drawFish(t,kick,toss);
+    const fishPose=drawFish(t,kick,toss);
     drawAvatar(avatar1,p1.x,p1.y,61,p1.r,p1.s,'#fff2ed');
     drawAvatar(avatar2,p2.x,p2.y,61,p2.r,p2.s,'#fce4dc');
-    if(toss)drawGrip(toss,toss.index===0?p1:p2);
+    if(toss)drawGrip(toss,toss.index===0?p1:p2,fishPose);
     drawBubble(t);
     for(const s of stars){
       const pulse=(Math.sin(t*4+s.p)+1)/2, x=s.x+Math.sin(t*1.5+s.p)*9, y=s.y+Math.cos(t*1.4+s.p)*8;
